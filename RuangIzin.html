@@ -76,7 +76,7 @@ summary{font-weight:700;cursor:pointer;color:var(--blue)}
 <div class="row"><a class="btn" id="waHero" target="_blank">Konsultasi Gratis</a><a class="btn alt" onclick="go('layanan')">Jelajahi Layanan</a><a class="btn ghost" onclick="go('cek')">Cek Kebutuhan Izin</a></div>
 </div></div>
 <div class="wrap"><div class="stats">
-<div><b id="s1">0</b>Klien Terlayani</div><div><b id="s2">0</b>Sedang Diproses</div><div><b id="s3">0</b>Izin Selesai</div></div>
+<div><b id="s1">0</b>Klien</div><div><b id="s2">0</b>Sedang Diproses</div><div><b id="s3">0</b>Izin Selesai</div></div>
 <p class="mut" style="text-align:center;margin-top:8px" id="sLbl"></p>
 <h2 style="margin-top:44px">Satu ruang untuk semua urusan legalitas usaha</h2>
 <p>RuangIzin membantu pelaku UMKM di Semarang, Surakarta, Wonosobo, Salatiga, dan Kabupaten Semarang memahami dan mengurus perizinan. Kami penyedia jasa pendampingan, bukan instansi penerbit izin.</p>
@@ -175,6 +175,19 @@ const ld=(k,d)=>{try{return JSON.parse(localStorage.getItem("ri_"+k))??d}catch{r
 const sv=(k,v)=>localStorage.setItem("ri_"+k,JSON.stringify(v));
 const rp=n=>"Rp"+n.toLocaleString("id-ID");
 const esc=s=>String(s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+function orderItems(o){return Array.isArray(o?.it)?o.it.filter(i=>i&&typeof i==="object"&&!Array.isArray(i)):[]}
+function orderText(value,fallback){return typeof value==="string"&&value.trim()?value.trim():typeof value==="number"&&Number.isFinite(value)?String(value):fallback}
+function orderMoney(value){const n=typeof value==="number"||typeof value==="string"&&value.trim()?Number(value):NaN;return Number.isFinite(n)&&n>=0?n:null}
+function orderTotal(o){const total=orderMoney(o?.total);if(total!==null)return total;
+ const items=orderItems(o),prices=items.map(i=>orderMoney(i.p??i.price));return items.length&&prices.every(p=>p!==null)?prices.reduce((sum,p)=>sum+p,0):null;}
+function moneyLabel(value){const amount=orderMoney(value);return amount===null?"Nominal belum tersedia":rp(amount)}
+function orderItemDetail(item){const value=item.detail??item.description??item.d??item.contents??item.i;
+ let detail=Array.isArray(value)?value.map(v=>orderText(v,"")).filter(Boolean).join(", "):orderText(value,"");
+ if(!detail&&Array.isArray(item.docs)){const docs=item.docs.flatMap(d=>Array.isArray(d)&&Array.isArray(d[1])?d[1]:[]).map(v=>orderText(v,"")).filter(Boolean);if(docs.length)detail=`Dokumen terkait: ${docs.join(", ")}`;}
+ const note=orderText(item.note,"");return note?`${detail||"Rincian belum tersedia"}; Catatan item: ${note}`:detail||"Rincian belum tersedia";}
+function confirmationText(o){const items=orderItems(o),name=orderText(o?.nama,"Nama belum tersedia"),id=orderText(o?.id,"Nomor pesanan belum tersedia");
+ const lines=items.length?items.map((item,index)=>`${index+1}. ${orderText(item.n??item.name,"Layanan belum tersedia")}\n   Rincian: ${orderItemDetail(item)}\n   Nominal item: ${moneyLabel(item.p??item.price)}`):["Rincian item belum tersedia pada data pesanan."];
+ return `Halo Tim RuangIzin, saya ingin mengonfirmasi pembayaran melalui QRIS.\n\nAtas nama: ${name}\nNomor pesanan: ${id}\nPesanan / layanan:\n${lines.join("\n")}\n\nJumlah / total pembayaran: ${moneyLabel(orderTotal(o))}\n\nMohon konfirmasi penerimaan pembayaran dan pesanan saya. Terima kasih.`;}
 let svc=ld("svc",DEF_SVC),pkt=ld("pkt",DEF_PKT),orders=[],cart=ld("cart",[]),adm=false,adminNotice="",orderChannel=null,statsChannel=null,latestStats=null;
 if(!ld("fee_update_20261111",false)){
  const fees={nib:149999,halal:199999,pirt:149999,hki:349999,bpom:499999,slhs:949999,sdku:199999,sni:499999};
@@ -227,7 +240,7 @@ function renderSvc(){const q=$("q").value.toLowerCase(),mx=+$("mx").value;
 function detail(id){const s=svc.find(x=>x.id===id);
  $("mb").innerHTML=`<h2>${esc(s.n)}</h2><p>${esc(s.d)}</p><p class="price">${priceTxt(s)} <small>(jasa RuangIzin)</small></p><h3>Jasa yang diberikan</h3><ul>${s.inc.map(i=>`<li>${esc(i)}</li>`).join("")}</ul><h3>Dokumen yang disiapkan</h3><ul>${s.doc.map(i=>`<li>${esc(i)}</li>`).join("")}</ul><h3>Biaya pemerintah / pihak ketiga</h3><p>${esc(s.gov)}</p><h3>Estimasi</h3><p>${esc(s.est)}</p><h3>Dasar hukum</h3><p>${esc(s.law)}</p><div class="row"><button class="btn" onclick="add('${s.id}');$('md').classList.remove('on')">Pesan Sekarang</button><a class="btn alt" target="_blank" href="${wa("Halo RuangIzin, saya ingin konsultasi layanan "+s.n+".")}">Konsultasi</a></div>`;$("md").classList.add("on");}
 function add(id){if(!cart.includes(id))cart.push(id);sv("cart",cart);$("cc").textContent=cart.length;go("keranjang");}
-function items(){return cart.map(id=>svc.find(s=>s.id===id)?{id,n:svc.find(s=>s.id===id).n,p:svc.find(s=>s.id===id).min,q:svc.find(s=>s.id===id).q,docs:[[svc.find(s=>s.id===id).n,svc.find(s=>s.id===id).doc]]}:(p=>({id,n:"Paket "+p.n,p:p.p,docs:p.s.map(x=>{const s=svc.find(y=>y.id===x);return[s.n,s.doc]})}))(pkt.find(x=>x.id===id)));}
+function items(){return cart.map(id=>svc.find(s=>s.id===id)?{id,n:svc.find(s=>s.id===id).n,detail:svc.find(s=>s.id===id).d,p:svc.find(s=>s.id===id).min,q:svc.find(s=>s.id===id).q,docs:[[svc.find(s=>s.id===id).n,svc.find(s=>s.id===id).doc]]}:(p=>({id,n:"Paket "+p.n,detail:p.i,p:p.p,docs:p.s.map(x=>{const s=svc.find(y=>y.id===x);return[s.n,s.doc]})}))(pkt.find(x=>x.id===id)));}
 function renderCart(){$("cc").textContent=cart.length;const it=items();
  if(!it.length){$("cart").innerHTML="<p>Keranjang kosong. <a href='#' onclick=\"go('layanan');return false\">Pilih layanan</a></p>";return}
  const tot=it.reduce((a,i)=>a+i.p,0);
@@ -237,11 +250,11 @@ function rm(id){cart=cart.filter(x=>x!==id);sv("cart",cart);renderCart();}
 async function checkout(){if(!supabaseClient){alert("Pemesanan belum tersedia: backend Supabase belum dikonfigurasi.");return;}
  const g=i=>$(i).value.trim();if(!g("kn")||!/\S+@\S+\.\S+/.test(g("ke"))||!/^[0-9+]{9,15}$/.test(g("kw"))||!g("ku")){alert("Lengkapi nama, email valid, WhatsApp (angka), dan nama usaha.");return}
  const randomId=new Uint8Array(8);crypto.getRandomValues(randomId);
- const it=items(),jenisLabel=JENIS.find(j=>j.v===g("kj"))?.t||"-",o={id:"RI-"+Array.from(randomId,b=>b.toString(16).padStart(2,"0")).join("").toUpperCase(),nama:g("kn"),email:g("ke").toLowerCase(),wa:g("kw"),usaha:g("ku"),jenis:jenisLabel,kota:g("kk"),alamat:g("ka"),it:it.map(i=>({n:i.n,docs:i.docs})),total:it.reduce((a,i)=>a+i.p,0),st:0,paid:false};
+ const it=items(),jenisLabel=JENIS.find(j=>j.v===g("kj"))?.t||"-",o={id:"RI-"+Array.from(randomId,b=>b.toString(16).padStart(2,"0")).join("").toUpperCase(),nama:g("kn"),email:g("ke").toLowerCase(),wa:g("kw"),usaha:g("ku"),jenis:jenisLabel,kota:g("kk"),alamat:g("ka"),it:it.map(i=>({n:i.n,detail:i.detail,p:i.p,docs:i.docs})),total:it.reduce((a,i)=>a+i.p,0),st:0,paid:false};
  let error;try{({error}=await supabaseClient.from("orders").insert(o));}catch(e){alert(`Pesanan gagal disimpan: ${e.message||e}`);return;}
  if(error){alert(`Pesanan gagal disimpan: ${error.message}`);return;}
  cart=[];sv("cart",cart);$("cc").textContent=0;payPage(o);}
-function payTxt(o){return `Halo RuangIzin, saya sudah melakukan pembayaran QRIS untuk pesanan ${o.id} (${rp(o.total)}) atas nama ${o.nama}. Mohon dikonfirmasi. Terima kasih.`}
+function payTxt(o){return confirmationText(o)}
 function payPage(o){go("bayar");
  $("payBox").innerHTML=`<h2>Pembayaran QRIS</h2><p>Pesanan <b>${o.id}</b> – ${rp(o.total)}</p><p class="mut">Scan QRIS di bawah ini dengan aplikasi pembayaran Anda, lalu konfirmasi ke WhatsApp kami.</p><div style="margin:16px 0"><img src="WhatsApp Image 2026-11-11 at 18.57.09.jpeg" alt="QRIS Shop UNNIETIP" style="max-width:300px;width:100%;border-radius:12px;border:1px solid var(--soft)"></div>
  ${o.paid?`<div class="note">Pembayaran sudah terverifikasi admin.</div><button class="btn" onclick="waDocs('${o.id}')">Kirim Dokumen Melalui WhatsApp</button>`:`<div class="note">Setelah membayar, tekan tombol di bawah untuk mengirim bukti pembayaran ke WhatsApp. Pesanan diproses setelah pembayaran diverifikasi admin.</div><a class="btn" target="_blank" href="${wa(payTxt(o))}">Konfirmasi Pembayaran via WhatsApp</a>`}`;}
@@ -271,11 +284,16 @@ async function addRev(){if(!supabaseClient){alert("Verifikasi ulasan belum terse
  r.push({o:id,n:order.customer_name,u:order.business_label,s:order.service_names.join(", "),t:$("rtx").value.slice(0,500),r:+$("rst").value});sv("rev",r);renderRev();$("rtx").value="";}
 function renderAdm(){const a=$("adm");
  if(!adm){a.innerHTML=`<h2>Admin</h2><p class="mut">Masuk dengan akun admin Supabase.</p>${adminNotice?`<p class="note">${esc(adminNotice)}</p>`:""}<label>Email admin</label><input id="adminEmail" type="email" autocomplete="username" style="max-width:320px"><label>Kata sandi</label><input id="adminPassword" type="password" autocomplete="current-password" style="max-width:320px"><button class="btn" onclick="loginAdmin()">Masuk</button>`;return}
- const paid=orders.filter(o=>o.paid),om=paid.reduce((s,o)=>s+o.total,0);
+ const paid=orders.filter(o=>o.paid),om=paid.reduce((s,o)=>s+(orderTotal(o)??0),0);
  a.innerHTML=`<h2>Dashboard Admin</h2>${adminNotice?`<p class="note">${esc(adminNotice)}</p>`:""}<div class="grid"><div class="card"><b>${orders.length}</b>Pesanan</div><div class="card"><b>${rp(om)}</b>Omzet jasa (sudah dibayar, tanpa biaya pemerintah)</div><div class="card"><b>${orders.filter(o=>o.st===5).length}</b>Perlu revisi</div></div>
- <h3 style="margin-top:24px">Pesanan</h3><p class="mut">Perubahan tersinkronisasi ke admin lain dan statistik publik.</p><table>${orders.map(o=>`<tr><td>${esc(o.id)}<br><small>${esc(o.nama)}</small></td><td><select onchange="chSt('${esc(o.id)}',this.value)">${ST.map((s,k)=>`<option value="${k}" ${k===o.st?"selected":""}>${esc(s)}</option>`).join("")}</select></td><td><input placeholder="Catatan" value="${esc(o.note||"")}" onchange="chNote('${esc(o.id)}',this.value)"></td></tr>`).join("")||"<tr><td>Belum ada pesanan.</td></tr>"}</table>
+ <h3 style="margin-top:24px">Pesanan</h3><p class="mut">Perubahan tersinkronisasi ke admin lain dan statistik publik.</p><div style="overflow-x:auto"><table><thead><tr><th>Pesanan dan rincian</th><th>Status</th><th>Catatan</th><th>Aksi</th></tr></thead><tbody>${orders.map(o=>`<tr><td><b>${esc(orderText(o.id,"Nomor pesanan belum tersedia"))}</b><br><small>Atas nama ${esc(orderText(o.nama,"Nama belum tersedia"))}</small><ol>${orderItems(o).map(item=>`<li><b>${esc(orderText(item.n??item.name,"Layanan belum tersedia"))}</b><br><small>Rincian: ${esc(orderItemDetail(item))}</small><br><small>Nominal item: ${esc(moneyLabel(item.p??item.price))}</small></li>`).join("")||"<li>Rincian item belum tersedia pada data pesanan lama.</li>"}</ol><b class="price">Total: ${esc(moneyLabel(orderTotal(o)))}</b></td><td><select data-order-id="${esc(o.id)}" onchange="chSt(this.dataset.orderId,this.value)">${ST.map((s,k)=>`<option value="${k}" ${k===o.st?"selected":""}>${esc(s)}</option>`).join("")}</select></td><td><input placeholder="Catatan" value="${esc(o.note||"")}" data-order-id="${esc(o.id)}" onchange="chNote(this.dataset.orderId,this.value)"></td><td><button class="btn sm alt" data-order-id="${esc(o.id)}" onclick="copyConfirmation(this.dataset.orderId,this)">Salin Format Konfirmasi</button></td></tr>`).join("")||"<tr><td colspan=\"4\">Belum ada pesanan.</td></tr>"}</tbody></table></div>
  <h3 style="margin-top:24px">Harga layanan</h3><table>${svc.map((s,i)=>`<tr><td>${esc(s.n)}</td><td><input type="number" value="${s.min}" onchange="if(svc[${i}].min===svc[${i}].max)svc[${i}].max=+this.value;svc[${i}].min=+this.value;sv('svc',svc)"></td></tr>`).join("")}</table>
  <button class="btn alt" style="margin-top:20px" onclick="logoutAdmin()">Keluar</button>`;}
+async function copyConfirmation(id,button){const order=orders.find(o=>o.id===id);if(!order){alert("Data pesanan tidak ditemukan.");return;}
+ try{if(navigator.clipboard?.writeText)await navigator.clipboard.writeText(confirmationText(order));
+  else{const field=document.createElement("textarea");field.value=confirmationText(order);field.style.position="fixed";field.style.opacity="0";document.body.append(field);field.select();const copied=document.execCommand("copy");field.remove();if(!copied)throw new Error("Fitur salin tidak tersedia.");}
+  const label=button.textContent;button.textContent="Tersalin";setTimeout(()=>{if(button.isConnected)button.textContent=label;},1800);
+ }catch(error){alert(`Gagal menyalin format konfirmasi: ${error.message||error}`);}}
 async function chSt(id,v){try{const status=Number(v),{error}=await supabaseClient.from("orders").update({st:status,paid:status>=1}).eq("id",id);
  if(error)throw error;await loadAdminOrders();}catch(error){showAdminError(error);alert(adminNotice);}}
 async function chNote(id,note){try{const {error}=await supabaseClient.from("orders").update({note}).eq("id",id);
